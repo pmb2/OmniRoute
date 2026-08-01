@@ -21,6 +21,7 @@ import {
   mergeAbortSignals,
   type ProviderCredentials,
 } from "./base.ts";
+import { resolveDedicatedCliproxyapiApiKey } from "../handlers/chatCore/cliproxyapiCredentials.ts";
 import { HTTP_STATUS, FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { getProviderPluginManifestHeader } from "../config/providerPluginManifestUrl.ts";
 import { rememberCpaAuthIndex } from "../handlers/chatCore/cpaTraceAuthIndex.ts";
@@ -526,7 +527,20 @@ export class CliproxyapiExecutor extends BaseExecutor {
     const start = Date.now();
     try {
       const baseUrl = await resolveCliproxyapiBaseUrl();
+      const headers: Record<string, string> = {};
+      // CLIProxyAPI requires the configured api-keys credential on /v1/models
+      // (see config.yaml api-keys). Send the dedicated key when set so the
+      // health probe doesn't 401 on an otherwise-healthy instance.
+      try {
+        const { getSettings } = await import("@/lib/db/settings");
+        const settings = await getSettings();
+        const key = resolveDedicatedCliproxyapiApiKey(settings);
+        if (key) headers["Authorization"] = `Bearer ${key}`;
+      } catch {
+        /* no dedicated key configured — probe without auth */
+      }
       const res = await fetch(`${baseUrl}/v1/models`, {
+        headers,
         signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
       });
       return {

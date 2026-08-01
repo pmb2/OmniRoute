@@ -71,6 +71,8 @@ const SERVICES: ServiceEntry[] = [
     healthIntervalMs: 5_000,
     stopTimeoutMs: 15_000,
     logsBufferBytes: 5_242_880,
+    // CLIProxyAPI enforces its own api-keys: entries — the model-sync probe
+    // must authenticate or every /v1/models call returns HTTP 401.
     needsApiKey: true,
   },
   {
