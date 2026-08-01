@@ -807,6 +807,24 @@ export class DefaultExecutor extends BaseExecutor {
    */
   transformRequest(model, body, stream, credentials) {
     const cleanedBody = super.transformRequest(model, body, stream, credentials);
+    // Custom compatible nodes are addressed by provider prefix in the request
+    // model string (e.g. "openai-compatible-yunwu/gpt-5.5"), but the upstream
+    // endpoint must receive the bare model id. The resolved `model` param is
+    // already prefix-free — force it onto the body (same normalization as
+    // CliproxyapiExecutor) so upstream never sees the routing prefix, which
+    // returns "unknown model" / "no available channel" 4xx/5xx.
+    if (
+      (this.provider?.startsWith?.("openai-compatible-") ||
+        this.provider?.startsWith?.("anthropic-compatible-")) &&
+      cleanedBody &&
+      typeof cleanedBody === "object" &&
+      !Array.isArray(cleanedBody)
+    ) {
+      const compatibleBody = cleanedBody as Record<string, unknown>;
+      if (typeof compatibleBody.model === "string" && compatibleBody.model !== model) {
+        compatibleBody.model = model;
+      }
+    }
     let withDefaults = applyProviderRequestDefaults(cleanedBody, this.config.requestDefaults);
 
     // ponytail: backfill missing tool message names for strict OpenAI-compatible providers.

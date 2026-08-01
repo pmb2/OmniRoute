@@ -811,8 +811,16 @@ export async function getComboForModel(modelStr) {
   try {
     const { resolveComboForModel } = await import("@/lib/db/modelComboMappings");
     const mapped = await resolveComboForModel(baseModelStr || modelStr);
-    if (mapped && (mapped as any).models?.length > 0) {
-      return mapped;
+    if (mapped) {
+      // Resolver returns raw stored combo data (`targets`); downstream combo code
+      // reads `combo.models`. Expose `models` as the targets array so name-matched
+      // and mapping-matched combos behave identically (#563).
+      if (Array.isArray((mapped as any).models) && (mapped as any).models.length > 0) {
+        return mapped;
+      }
+      if (Array.isArray((mapped as any).targets) && (mapped as any).targets.length > 0) {
+        return { ...(mapped as object), models: (mapped as any).targets };
+      }
     }
   } catch {
     // If the mappings table doesn't exist yet (pre-migration), continue gracefully
