@@ -21,6 +21,7 @@ import {
   buildAllTargetsCoolingDownResponse,
   type PreDispatchExclusion,
 } from "./pinRecovery.ts";
+import { healthPreFilter } from "../hermes/healthFilter.ts";
 import { buildContextBudgetResponse } from "./budgetExhaustion.ts";
 import { formatExhaustedConnectionKey } from "./comboDiagFormat.ts";
 import { collectQuotaWindowExclusions, formatQuotaSkipMessage } from "./quotaSkipDiagnostics.ts";
@@ -721,6 +722,15 @@ export async function handleRoundRobinCombo({
       ) {
         log.info("COMBO-RR", `Skipping ${modelStr} — admission lane full (#9654)`);
         fallbackCount++;
+        continue;
+      }
+
+      // Hermes: proactive health filter — skip circuit-open, quota-exhausted, or
+      // connection-dead providers BEFORE dispatch (saves latency on doomed attempts).
+      const healthSkip = await healthPreFilter(target, { resilienceSettings });
+      if (healthSkip) {
+        log.info("COMBO-RR", healthSkip);
+        if (offset > 0) fallbackCount++;
         continue;
       }
 

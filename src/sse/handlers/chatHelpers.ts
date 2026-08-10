@@ -74,6 +74,8 @@ import { logTranslationEvent } from "../../lib/translatorEvents";
 import { getRuntimeProviderProfile } from "@omniroute/open-sse/services/accountFallback.ts";
 import { recordConnectionOutcome } from "@omniroute/open-sse/services/connectionLatencyTracker.ts";
 import { describeConnectionRestriction } from "../services/credentialSelectionDiagnostics.ts";
+import { resolveAgentModelStr } from "@omniroute/open-sse/services/hermes/agentProfiles";
+import { extractAgentHeader } from "@omniroute/open-sse/services/hermes/costTracker";
 
 // #14960: circuit-open 503 that also names the breaker's classified failure kind.
 function breakerOpenResponse(provider: string, breaker: CircuitBreaker, retryAfterSec: number) {
@@ -128,7 +130,15 @@ export async function resolveModelOrError(
   endpointPath: string = "",
   requestHeaders: Record<string, unknown> | null | undefined = null
 ) {
-  const modelInfo = await getModelInfoOrRetirementResponse(modelStr);
+  // Hermes: resolve per-agent routing profile from x-hermes-agent header.
+  // Maps agent slugs to optimized combos (forge → coding, sentry → security, etc.)
+  const agentSlug = extractAgentHeader(requestHeaders);
+  const routedModelStr = resolveAgentModelStr(agentSlug, modelStr);
+  if (routedModelStr !== modelStr) {
+    log.info("ROUTING", `${modelStr} → ${routedModelStr} (agent: ${agentSlug || "unknown"})`);
+  }
+
+  const modelInfo = await getModelInfoOrRetirementResponse(routedModelStr);
   if ("error" in modelInfo) return modelInfo;
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
 
