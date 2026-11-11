@@ -27,6 +27,7 @@ import { Tile } from "@omniroute/ui-kit/tile";
 import Badge from "@/shared/components/Badge";
 import Button from "@/shared/components/Button";
 import GlobalModelSearchPanel from "./GlobalModelSearchPanel";
+import RankedModelCatalog from "./RankedModelCatalog";
 import Card from "@/shared/components/Card";
 import { CardSkeleton } from "@/shared/components/Loading";
 import EmptyState from "@/shared/components/EmptyState";
@@ -1368,6 +1369,8 @@ function CombosPageContent() {
         onTestCombo={handleTestCombo}
         testingName={testingCombo}
       />
+
+      <RankedModelCatalog />
 
       <KimiComboPresetCard
         alreadyCreated={hasKimiCodingPreset(combos)}

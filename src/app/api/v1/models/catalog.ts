@@ -31,6 +31,10 @@ import {
   REGISTRY,
 } from "@omniroute/open-sse/config/providerRegistry";
 import { CODEX_NATIVE_UNPREFIXED_MODELS } from "@omniroute/open-sse/services/model";
+import {
+  getLocalFallbackConfig,
+  getLocalFallbackModelRef,
+} from "@omniroute/open-sse/services/localEmergencyFallback";
 import { isModelSelectable } from "@omniroute/open-sse/services/modelLifecycle";
 import { resolveNestedComboTargets } from "@omniroute/open-sse/services/combo";
 import { expandProviderWildcardsInCollection } from "@omniroute/open-sse/services/combo/providerWildcard";
@@ -2335,6 +2339,37 @@ async function buildUnifiedModelsResponseCore(
       // dominant synchronous stage. Let already-queued health checks run before the
       // remaining in-memory enrichment and JSON serialization.
       await yieldCatalogBuildTurn();
+    }
+
+    // Local emergency tier: advertise it even while Ollama is stopped so clients
+    // can select it and trigger the on-demand start. Appended AFTER the API-key
+    // model filters on purpose - it is the last-resort tier and must always be
+    // selectable.
+    try {
+      const localConfig = getLocalFallbackConfig();
+      if (localConfig.enabled) {
+        const localId = getLocalFallbackModelRef(localConfig);
+        if (!finalModels.some((model: any) => model?.id === localId)) {
+          finalModels = [
+            ...finalModels,
+            {
+              id: localId,
+              object: "model",
+              created: timestamp,
+              owned_by: localConfig.provider,
+              permission: [],
+              root: localConfig.model,
+              parent: null,
+              description: `Local emergency fallback (${localConfig.model}); starts on first use`,
+              context_length: 32768,
+              max_output_tokens: 8192,
+              capabilities: { tool_calling: true, temperature: true },
+            },
+          ];
+        }
+      }
+    } catch (error) {
+      console.log("[catalog] Could not advertise local fallback model:", error);
     }
 
     return finalizeCatalogResponse(

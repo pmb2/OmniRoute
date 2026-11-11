@@ -213,6 +213,11 @@ import {
 import { startQuotaMonitor } from "@omniroute/open-sse/services/quotaMonitor.ts";
 import { isFallbackDecision } from "@omniroute/open-sse/services/emergencyFallback.ts";
 import {
+  ensureLocalModelServer,
+  getLocalFallbackModelRef,
+  isLocalFallbackProvider,
+} from "@omniroute/open-sse/services/localEmergencyFallback.ts";
+import {
   registerCodexConnection,
   registerCodexQuotaFetcher,
 } from "@omniroute/open-sse/services/codexQuotaFetcher.ts";
@@ -1402,7 +1407,60 @@ async function handleChatImplementation(
         log.warn("GLOBAL_FALLBACK", `Global fallback error: ${err?.message || "unknown"}`);
       }
     }
-    // ─────────────────────────────────────────────────────────────────────────
+    // Local emergency fallback: every remote tier (including the global fallback)
+    // is exhausted. Start Ollama on demand and serve through the normal dispatch
+    // path, exactly once per request. This is the "all providers are dead" tier.
+    if (
+      !response.ok &&
+      !runtimeOptions.emergencyFallbackTried &&
+      getLocalFallbackModelRef() !== resolvedModelStr
+    ) {
+      try {
+        const local = await ensureLocalModelServer();
+        if (local.ok) {
+          log.warn(
+            "LOCAL_FALLBACK",
+            `All providers exhausted for "${resolvedModelStr}" - serving ${local.modelRef}`
+          );
+          const localResponse = await handleSingleModelChat(
+            { ...body, model: local.modelRef },
+            local.modelRef,
+            clientRawRequest,
+            request,
+            combo.name,
+            apiKeyInfo,
+            telemetry,
+            {
+              sessionId,
+              sessionAffinityKey,
+              emergencyFallbackTried: true,
+              forceLiveComboTest: isComboLiveTest,
+              conversationId,
+              managedLease,
+              videoBridgeLog,
+            },
+            combo.strategy,
+            true
+          );
+          if (localResponse.ok) {
+            recordTelemetry(telemetry);
+            return markEmergencyFallback(localResponse, resolvedModelStr, local.modelRef);
+          }
+          log.warn(
+            "LOCAL_FALLBACK",
+            `Local fallback ${local.modelRef} failed (${localResponse.status})`
+          );
+        } else {
+          log.warn(
+            "LOCAL_FALLBACK",
+            `Local fallback unavailable: ${local.error ?? "unknown error"}`
+          );
+        }
+      } catch (error: any) {
+        log.warn("LOCAL_FALLBACK", `Local fallback error: ${error?.message ?? error}`);
+      }
+    }
+    // �������������������������������������������������������������������������
 
     // Record telemetry
     recordTelemetry(telemetry);
@@ -1683,6 +1741,22 @@ async function handleSingleModelChat(
     if (modelStr.startsWith(runtimeOptions.providerId + "/")) return resolvedProvider;
     return runtimeOptions.providerId;
   })();
+  // Local emergency tier: selecting the local model (directly or through the
+  // priority combo) starts Ollama on demand. ensureLocalModelServer() is
+  // idempotent and deduplicates concurrent starts.
+  if (isLocalFallbackProvider(provider)) {
+    try {
+      const local = await ensureLocalModelServer();
+      if (!local.ok) {
+        log.warn(
+          "LOCAL_FALLBACK",
+          `Local model not ready (${local.modelRef}): ${local.error ?? "unknown error"}`
+        );
+      }
+    } catch (error: any) {
+      log.warn("LOCAL_FALLBACK", `Local model start failed: ${error?.message ?? error}`);
+    }
+  }
   const resolvedModelGate = resolvedPolicy.createVisibleResolvedModelGate({
     apiKeyInfo,
     request,
