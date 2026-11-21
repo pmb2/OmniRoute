@@ -1,6 +1,6 @@
 ---
 title: "Free-Tier Allowances and Model Strength"
-version: 3.8.54
+version: 3.8.55
 lastUpdated: 2026-11-21
 ---
 
@@ -31,6 +31,17 @@ subscription or allowance with no per-token charge**. Metered credit providers
 `PROVIDER_LIMITS_SYNC_INTERVAL_MINUTES` controls the background refresh (this
 deployment sets it to `5`; the shipped default is `70`). A successful OpenCode
 fetch is cached for 60 seconds.
+
+**Keeping the router current.** The `G-Bot OmniRoute Update` scheduled task runs
+nightly and now merges `origin/release/v3.8.55` into the deployment branch,
+installs when the lockfile moves, snapshots the data dir, builds with the
+webpack backend, restarts the service, and rolls back on a failed build or
+health check. A conflicted merge aborts and holds the previous release instead
+of deploying half a merge; status lands in `omniroute-update-status.json` and
+an `OMNIROUTE_UPDATE_WEBHOOK_URL` receives the reason. The task used to pull a
+`local/main-v3.8.54` ref that no longer exists upstream — that is why the
+router sat on an old build: every nightly run failed before reaching the
+build.
 
 **Why this matters:** an expired or legacy API-key row can still look "active" in
 the UI. OpenCode quota fetches returned nothing until the stored key on
