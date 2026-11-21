@@ -24,6 +24,7 @@ import { mapImageSize } from "../translator/image/sizeMapper.ts";
 import { getCodexClientVersion, getCodexUserAgent } from "../config/codexClient.ts";
 import { isCodexFreePlan } from "../executors/codex/tools.ts";
 import { sleep } from "../utils/sleep.ts";
+import { clampPollIntervalMs, clampPollTimeoutMs } from "../utils/pollBounds.ts";
 import { codexReferenceImageUrl } from "./imageGeneration/providers/codexReferences.ts";
 export { shrinkCodexReferenceImage } from "./imageGeneration/providers/codexReferences.ts";
 import {
@@ -40,7 +41,7 @@ import {
   extractComfyOutputFiles,
   resolveComfyUiBaseUrl,
 } from "../utils/comfyuiClient.ts";
-import { fetchUntrustedRemoteImage } from "@/shared/network/remoteImageFetch";
+import { fetchUntrustedRemoteImage } from "../utils/remoteMediaFetch.ts";
 import {
   FetchTimeoutError,
   fetchWithTimeout,
@@ -848,6 +849,7 @@ export async function handleImageGeneration({
       body,
       credentials,
       log,
+      signal,
     });
   }
 
@@ -2964,11 +2966,11 @@ async function handleNanoBananaImageGeneration({
       return { success: false, status: 500, error: errorText };
     }
 
-    const timeoutMs = normalizePositiveNumber(
+    const timeoutMs = clampPollTimeoutMs(
       body.timeout_ms,
       normalizePositiveNumber(process.env.NANOBANANA_POLL_TIMEOUT_MS, 120000)
     );
-    const pollIntervalMs = normalizePositiveNumber(
+    const pollIntervalMs = clampPollIntervalMs(
       body.poll_interval_ms,
       normalizePositiveNumber(process.env.NANOBANANA_POLL_INTERVAL_MS, 2500)
     );
