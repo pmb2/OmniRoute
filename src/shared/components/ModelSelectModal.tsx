@@ -48,6 +48,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useConfirmDialog } from "@/shared/hooks/useConfirmDialog";
 import { fetchProviderModels, type ProviderDegradation } from "./modelSelectDiscovery";
 import { DiscoveryDegradedNotice } from "./DiscoveryDegradedNotice";
+import type { SuggestedModel } from "@/lib/models/suggestedModels";
 
 // Model/combo chips: compact pill on the kit outline Button (toggle via aria-pressed).
 const CHIP_CLASS = "h-auto min-h-0 rounded-xl px-2 py-1 text-xs font-medium";
@@ -138,6 +139,10 @@ export default function ModelSelectModal({
       : fallback;
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState<any[]>([]);
+  const [suggestedModels, setSuggestedModels] = useState<SuggestedModel[]>([]);
+  const [exhaustedProviders, setExhaustedProviders] = useState<
+    Array<{ provider: string; reason: string }>
+  >([]);
   const [providerNodes, setProviderNodes] = useState<any[]>([]);
   const [customModels, setCustomModels] = useState<Record<string, any>>({});
   // #9203: unified hidden-model map (customModels.isHidden +
@@ -184,6 +189,37 @@ export default function ModelSelectModal({
       }
     };
     fetchCombos();
+  }, [isOpen]);
+
+  // Suggested models: healthy providers first, then what this operator has been
+  // running lately. Refreshed while the modal stays open so a model that just
+  // went into cooldown drops out and the next one takes its place.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/models/suggested?limit=3");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          suggestions?: SuggestedModel[];
+          exhaustedProviders?: Array<{ provider: string; reason: string }>;
+        };
+        if (cancelled) return;
+        setSuggestedModels(Array.isArray(data.suggestions) ? data.suggestions : []);
+        setExhaustedProviders(
+          Array.isArray(data.exhaustedProviders) ? data.exhaustedProviders : []
+        );
+      } catch {
+        // The provider list below still works without the shortcut row.
+      }
+    };
+    void load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [isOpen]);
 
   // Reset provider-test bookkeeping whenever the modal closes so the next
@@ -980,6 +1016,69 @@ export default function ModelSelectModal({
 
       {/* Models grouped by provider - compact */}
       <div className="max-h-[min(50vh,420px)] overflow-y-auto space-y-3 isolate">
+        {/* Suggested section — live providers, then recent use. Hidden while searching. */}
+        {!searchQuery.trim() && (suggestedModels.length > 0 || exhaustedProviders.length > 0) && (
+          <div data-testid="model-select-suggested">
+            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 z-10 bg-surface py-1">
+              <Icon name="bolt" size={14} className="text-primary" />
+              <span className="text-xs font-medium text-primary">
+                {labelOrFallback("suggestedModels", "Suggested")}
+              </span>
+              <span className="text-[10px] text-text-muted">({suggestedModels.length})</span>
+              {exhaustedProviders.length > 0 && (
+                <span
+                  className="ms-auto text-[10px] text-text-muted truncate"
+                  title={exhaustedProviders
+                    .map((entry) => `${entry.provider}: ${entry.reason}`)
+                    .join("\n")}
+                >
+                  {labelOrFallback("exhaustedProviders", "Exhausted")}:{" "}
+                  {exhaustedProviders.map((entry) => entry.provider).join(", ")}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestedModels.map((model) => {
+                const isSelected = isValueSelected(model.id);
+                const isAdded = addedModelValues.includes(model.id);
+                const usage = model.usage;
+                return (
+                  <Button
+                    key={model.id}
+                    variant="outline"
+                    size="sm"
+                    aria-pressed={isSelected}
+                    title={
+                      usage
+                        ? `${model.provider} · ${usage.requests} requests · ${usage.successRatePct}% ok`
+                        : `${model.provider} · available`
+                    }
+                    onClick={() =>
+                      handleSelect({ id: model.id, name: model.name, value: model.id })
+                    }
+                    className={cn(
+                      CHIP_CLASS,
+                      isSelected
+                        ? "bg-primary text-accent-foreground border-primary hover:bg-primary"
+                        : isAdded
+                          ? "bg-success/15 border-success/30 text-success"
+                          : "hover:border-primary/50 hover:bg-primary/5"
+                    )}
+                  >
+                    {isAdded && <span className="mr-0.5 opacity-70">✓</span>}
+                    {model.name}
+                    {model.reason === "recent" && (
+                      <span className="ml-1 text-[10px] uppercase opacity-70">
+                        {labelOrFallback("recent", "recent")}
+                      </span>
+                    )}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Combos section - always first */}
         {showCombos && filteredCombos.length > 0 && (
           <div>
