@@ -77,8 +77,11 @@ function providerExhaustion(
     const current = byProvider.get(provider) ?? { total: 0, usable: 0, reason: null };
     current.total += 1;
     if (dead) {
+      // Report why, not the generic testStatus: a connection can carry
+      // testStatus "active" and still be dead on a recent 401/402/403.
+      const indicativeStatus = status && !["active", "unknown", ""].includes(status) ? status : "";
       current.reason ??=
-        status ||
+        indicativeStatus ||
         (isRateLimited ? "rate_limited" : "") ||
         (code ? `error_${code}` : "") ||
         "unavailable";

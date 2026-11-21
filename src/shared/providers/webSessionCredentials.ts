@@ -438,7 +438,13 @@ export function getWebSessionCredentialRequirement(
 }
 
 export function canUpdateProviderApiKey(authType: unknown, providerId: unknown): boolean {
-  if (authType === "apikey") return true;
+  // "api_key" is the legacy spelling some very old connections carry (the
+  // OpenCode Go row in this deployment did). It is an API-key row in every
+  // other column, so a key edit must go through — refusing it here makes the
+  // providers PUT silently drop the operator's new key while the dashboard
+  // reports success (#ops 2026-11-21: an expired key survived three "replace"
+  // attempts because of exactly that).
+  if (authType === "apikey" || authType === "api_key") return true;
   if (authType !== "cookie") return false;
   return getWebSessionCredentialRequirement(providerId)?.kind === "token";
 }

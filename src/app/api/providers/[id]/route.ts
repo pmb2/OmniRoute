@@ -26,6 +26,7 @@ import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
 import { reconcileMaskedExtraApiKeys } from "@/shared/utils/apiKeyMask";
 import { cleanupProviderModelsAfterConnectionDelete } from "@/lib/db/models";
 import { canUpdateProviderApiKey } from "@/shared/providers/webSessionCredentials";
+import { buildErrorBody } from "@omniroute/open-sse/utils/error";
 import {
   refreshConnectionRateLimits,
   enableRateLimitProtection,
@@ -226,6 +227,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (globalPriority !== undefined) updateData.globalPriority = globalPriority;
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
+    // A refused key edit must be loud: silently dropping it leaves the
+    // dashboard reporting success while the old (possibly expired) key
+    // keeps failing every request. 400 through the standard envelope.
+    if (apiKey && !canUpdateProviderApiKey(existing.authType, existing.provider)) {
+      return NextResponse.json(
+        buildErrorBody(
+          400,
+          "This connection's auth type does not allow editing its API key here. Re-create the connection with the new key."
+        ),
+        { status: 400 }
+      );
+    }
     if (apiKey && canUpdateProviderApiKey(existing.authType, existing.provider)) {
       if (existing.provider === "chatgpt-web-codex") {
         const validationId =

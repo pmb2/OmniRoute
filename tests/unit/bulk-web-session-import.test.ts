@@ -190,6 +190,10 @@ describe("canUpdateProviderApiKey", () => {
     assert.equal(canUpdateProviderApiKey("cookie", "claude-web"), false);
   });
 
+  it("accepts the legacy api_key spelling so old rows can still rotate keys", () => {
+    assert.equal(canUpdateProviderApiKey("api_key", "opencode-go"), true);
+  });
+
   it("does not broaden non-cookie auth types", () => {
     assert.equal(canUpdateProviderApiKey("oauth", "deepseek-web"), false);
     assert.equal(canUpdateProviderApiKey(null, "deepseek-web"), false);
