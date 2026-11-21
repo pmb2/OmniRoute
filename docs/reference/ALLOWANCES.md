@@ -47,8 +47,14 @@ build.
 the UI. OpenCode quota fetches returned nothing until the stored key on
 `opencode-go-api` was replaced and its legacy `auth_type` (`api_key`) was corrected
 to `apikey` — `canUpdateProviderApiKey()` refuses key edits on the legacy value,
-so the dashboard silently kept the old key. If OpenCode shows no quota, check
-both the key and `provider_connections.auth_type`.
+so the dashboard silently kept the old key. That legacy value also routed the
+connection Test button to "Provider test not supported", hiding expired keys and
+exhausted balances from the dashboard. Both are fixed as of 2026-11-21: the
+update path accepts the legacy spelling (and refuses a key edit loudly with a
+400 instead of dropping it), and every `api_key` row in this deployment's
+database was normalized to `apikey` — all connections now report real test
+results. If OpenCode shows no quota, check both the key and
+`provider_connections.auth_type`.
 
 ---
 
